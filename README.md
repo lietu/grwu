@@ -7,7 +7,9 @@
 
 Tool to (periodically) update your (Gnome) wallpaper to a random one from an RSS feed, e.g. the NASA image of the day feed.
 
-Made primarily for Linux systems and Gnome 3, but could work (possibly with changes) with e.g. Gnome 2, Unity and maybe (definitely with changes) Mac OS X. Scheduling is left to the user to do via crontab or similar tools.
+Made primarily for Linux systems and Gnome 3, it has been tested to work without changes on Unity (Ubuntu 12.04), and could work (possibly with changes) with e.g. Gnome 2, Cinnamon, and (definitely with changes) Mac OS X. It also shouldn't be a huge deal to update it to work with XFCE or others.
+
+Scheduling is left to the user to do via crontab or similar tools. The tool tries to make sure it works from cron by taking care of e.g. DBUS session.
 
 
 ## Why is this?
@@ -37,40 +39,21 @@ python grwu.py [url]
 Where [url] is an optional URL to the RSS feed you want to use.
 
 
-## Wait, I put this in my crontab and it doesn't work?
-
-Yeah, the people beside linux desktop came up with this great thing called dbus and everyone is using it, that's why nothing works in a sane way. To get this script working in your cron entries, you will have to prepend a magic line to them:
-
-```bash
-export $(xargs -n 1 -0 echo < /proc/$(pidof gnome-session)/environ | grep -Z DBUS_SESSION_BUS_ADDRESS=)
-```
-
-Making your crontab line look like this:
-
-```
-30 * * * * export $(xargs -n 1 -0 echo < /proc/$(pidof gnome-session)/environ | grep -Z DBUS_SESSION_BUS_ADDRESS=); /path/to/grwu.py
-```
-
-.. look scary? It sort of should, and I look forward to hearing of better alternatives. What it does is:
-
- * Take the process ID of the running "gnome-session" -process
- * Use this to find the environment for the process information from /proc
- * Extract DBUS_SESSION_BUS_ADDRESS -variable from the environment
- * Export it to your current environment
-
-This is required because gsettings, that is used to update the background image, uses dbus.
-
-
 ## Well what is it that you are not telling us? Are there limitations to this?
 
-Well .. it is fairly limited still, I made it specifically for Gnome 3 on my machine, and NASA image of the day feed.
+Well .. it is fairly limited still, I made it specifically for Gnome 3 on my machine, and NASA image of the day feed. It happens to work on Unity (Ubuntu) as well, probably Cinnamon (Linux Mint) and other Gnome forks.
 
- * It is actually probably quite specific to gnome as-is. When I got to the DBUS part, I probably ended up making it quite gnome-specific (e.g. Unity probably doesn't have "gnome-session").
+ * It currently supports only Gnome and compatible systems. It shouldn't be a big deal to start supporting desktop environments.
 
- * It likely only supports very few RSS feeds. After I made the tool and thought about checking a few other feeds, I noticed that all the ones I found had different formats. Some embedded their images in HTML, some used <media> elements, some <enclosure> elements, etc. .. because it all seemed like a huge mess I decided not to start implementing any other ones until I think about it a bit more.
-
+ * It likely only supports very few RSS feeds. Very few "image of the day" type RSS feeds seem to provide links to the original images, only some thumbnails. Some embedd their images in HTML, some used <media> elements, some <enclosure> elements, etc. .. because it all seemed like a huge mess I only implemented a few things and left the other cases up to you.
 
 
 ## How about licensing?
 
 Short answer: new BSD. Full license text embedded in the source.
+
+
+## Feeds known to work with this tool
+
+* http://www.nasa.gov/rss/dyn/image_of_the_day.rss
+* http://www.redorbit.com/feeds/earth_iod.xml

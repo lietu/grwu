@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# GRWU - Gnome RSS Wallpaper Updater
+# GRWU - (Gnome) RSS Wallpaper Updater
 #
 # https://github.com/lietu/grwu
 #
@@ -9,7 +9,7 @@
 #
 # Recommend using with crontab (run "crontab -e" to edit it), add e.g.:
 #
-# 30 * * * * export $(xargs -n 1 -0 echo </proc/$(pidof gnome-session)/environ | grep -Z DBUS_SESSION_BUS_ADDRESS=); python /path/to/grwu.py "http://url.to/feed.rss"
+# 30 * * * * python /path/to/grwu.py "http://url.to/feed.rss"
 #
 #
 # Distributed with the "New BSD License":
@@ -43,14 +43,15 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 
-import os
-import sys
-import zlib
-import urllib2
-import xml.etree.ElementTree as ET
 from random import choice
 from tempfile import NamedTemporaryFile
-from subprocess import call
+import os
+import re
+import subprocess
+import sys
+import urllib2
+import xml.etree.ElementTree as ET
+import zlib
 
 
 # Read this many bytes of HTTP responses per iteration
@@ -70,6 +71,7 @@ quiet = True
 
 
 class WallpaperUpdater(object):
+    """Updates wallpapers to desktop environments"""
 
     def __init__(self, quiet):
         self.quiet = quiet
@@ -78,7 +80,100 @@ class WallpaperUpdater(object):
         if not self.quiet:
             print(message)
 
-    def update(self, rssUrl, storeDir, keepFiles):
+    def update(self, path):
+        """Update wallpaper on the desktop"""
+
+        self.log("Updating background to " + path)
+
+        processes = [
+            # This actually works on Unity as well
+            "gnome-session"
+        ]
+
+        for name in processes:
+            pid = self._get_pid(name)
+            if pid:
+                break
+
+        if not pid:
+            raise Exception("Failed to find a supported desktop environment")
+
+        self.log("Found {} running".format(name))
+
+        if name == "gnome-session":
+            self._update_gnome(path, pid)
+
+    def _update_gnome(self, path, pid):
+        """Updates wallpaper to Gnome and similar (e.g. Unity)"""
+
+        env = self._get_gnome_env(pid)
+        subprocess.Popen(
+            [
+                "gsettings", "set", "org.gnome.desktop.background",
+                "picture-uri", "file://" + path
+            ],
+            env=env
+        )
+
+    def _get_gnome_env(self, pid):
+        """Get an environment that'll allow communicating with Gnome"""
+
+        session = self._get_dbus_session_bus_address(pid)
+
+        env = os.environ.copy()
+        env["DBUS_SESSION_BUS_ADDRESS"] = session
+
+        return env
+
+    def _get_dbus_session_bus_address(self, pid):
+        """Get the DBUS_SESSION_BUS_ADDRESS for the given pid"""
+
+        if not pid:
+            raise Exception(
+                "Failed to figure out PID of gnome-session. Cannot extract "
+                "DBUS_SESSION_BUS_ADDRESS, so cannot continue."
+            )
+
+        path = '/proc/{}/environ'.format(pid)
+
+        session = None
+        with open(path, 'r') as f:
+            for line in f.read().split('\0'):
+                if line.startswith('DBUS_SESSION_BUS_ADDRESS='):
+                    session = line[25:]
+                    break
+
+        self.log("Using DBUS_SESSION_BUS_ADDRESS {}".format(session))
+
+        return session
+
+    def _get_pid(self, name):
+        """Find the PID for the given process"""
+
+        p = subprocess.Popen(
+            [
+                "pidof",
+                name
+            ],
+            stdout=subprocess.PIPE
+        )
+
+        pid, err = p.communicate()
+
+        return pid.strip()
+
+
+class WallpaperLoader(object):
+    """Loads wallpapers off RSS feeds"""
+
+    def __init__(self, quiet):
+        self.quiet = quiet
+
+    def log(self, message):
+        if not self.quiet:
+            print(message)
+
+    def load(self, rssUrl, storeDir, keepFiles):
         """Update wallpaper from RSS feed"""
 
         # Check that our path exists
@@ -88,12 +183,11 @@ class WallpaperUpdater(object):
         # Get the new wallpaper image
         path = self._get_wallpaper(rssUrl, storeDir)
 
-        # Update it as the wallpaper
-        self._set_wallpaper(path)
-
         # Clean up if needed
         if not keepFiles:
             self._clean_dir(storeDir, [path])
+
+        return path
 
     def _get_wallpaper(self, rssUrl, storeDir):
         """Download new wallpaper and return full path to file"""
@@ -110,23 +204,60 @@ class WallpaperUpdater(object):
         """Get a list of image URIs in the RSS feed"""
 
         uris = []
-        root = self._load_rss(rssUrl, storeDir)
+        root, namespaces = self._load_rss(rssUrl, storeDir)
+
         for enc in root.iter('enclosure'):
             if enc.attrib["type"].startswith("image/"):
                 uris.append(enc.attrib["url"])
 
+        search = self._get_ns_search('media:content', namespaces)
+        for item in root.iter(search):
+            if item.attrib["type"].startswith("image/"):
+                uris.append(item.attrib["url"])
+
         self.log("Found {} images in feed".format(str(len(uris))))
 
+        if len(uris) == 0:
+            raise Exception("Failed to find any images in the RSS feed")
+
         return uris
+
+    def _get_ns_search(self, search, namespaces):
+        """Convert namespace searches to format supported by ET"""
+
+        for src in namespaces:
+            dst = namespaces[src]
+            search = search.replace(src, dst)
+
+        return search
 
     def _load_rss(self, rssUrl, storeDir):
         """Load XML for the RSS, returns root node"""
 
         filename = self._load_uri(rssUrl, storeDir)
-        root = ET.parse(filename).getroot()
+
+        namespaces = {}
+        with open(filename, 'r') as f:
+            for line in f:
+                if line.find("<rss ") != -1:
+                    namespaces = self._parse_namespaces(line)
+
+        et = ET.parse(filename)
+        root = et.getroot()
         os.remove(filename)
 
-        return root
+        return root, namespaces
+
+    def _parse_namespaces(self, rssTagLine):
+        """Parse namespace information out of the <rss> tag"""
+
+        r = re.compile(r' xmlns:([^=]+)="([^"]+)"')
+
+        namespaces = {}
+        for match in r.finditer(rssTagLine):
+            namespaces[match.group(1) + ':'] = '{' + match.group(2) + '}'
+
+        return namespaces
 
     def _load_uri(self, uri, storeDir):
         """Load URI contents, handle gzip, save to file"""
@@ -161,15 +292,6 @@ class WallpaperUpdater(object):
 
         return tmp.name
 
-    def _set_wallpaper(self, filename):
-        """Update gnome wallpaper"""
-
-        self.log("Updating background to " + filename)
-        call([
-            "gsettings", "set", "org.gnome.desktop.background", "picture-uri",
-            "file://" + filename
-        ])
-
     def _clean_dir(self, path, exclude):
         """Remove all but excluded contents in given path"""
 
@@ -184,5 +306,8 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         rssUrl = sys.argv[1]
 
-    wu = WallpaperUpdater(quiet)
-    wu.update(rssUrl, tempPath, keepFiles)
+    loader = WallpaperLoader(quiet)
+    updater = WallpaperUpdater(quiet)
+
+    path = loader.load(rssUrl, tempPath, keepFiles)
+    updater.update(path)
