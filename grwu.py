@@ -49,6 +49,7 @@ import os
 import re
 import subprocess
 import sys
+import sys
 import urllib2
 import xml.etree.ElementTree as ET
 import zlib
@@ -70,6 +71,51 @@ keepFiles = False
 quiet = True
 
 
+class Detector(object):
+    """Detects desktop environment currently in use"""
+
+    def __init__(self, quiet):
+        self.quiet = quiet
+
+    def log(self, message):
+        if not self.quiet:
+            print(message)
+
+    def get_updater(self):
+        if sys.platform == "darwin":
+            self.log("Found Mac OS X running")
+            return MacOSXUpdater(self.quiet)
+
+        processes = [
+            # This actually works on Unity as well
+            "gnome-session"
+        ]
+
+        for name in processes:
+            pid = self._get_pid(name)
+            if pid:
+                self.log("Found {} running".format(name))
+                return self._updater_by_process(name, pid)
+
+        raise Exception("Failed to find a supported desktop environment")
+
+    def _updater_by_process(self, name, pid):
+        if name == "gnome-session":
+            return GnomeUpdater(self.quiet, pid)
+
+    def _get_pid(self, name):
+        """Find the PID for the given process"""
+
+        p = subprocess.Popen(
+            ["pgrep", name],
+            stdout=subprocess.PIPE
+        )
+
+        pid, err = p.communicate()
+
+        return pid.strip()
+
+
 class WallpaperUpdater(object):
     """Updates wallpapers to desktop environments"""
 
@@ -80,33 +126,18 @@ class WallpaperUpdater(object):
         if not self.quiet:
             print(message)
 
+
+class GnomeUpdater(WallpaperUpdater):
+    """Updates wallpaper to Gnome and similar (e.g. Unity)"""
+
+    def __init__(self, quiet, pid):
+        self.pid = pid
+        super(GnomeUpdater, self).__init__(quiet)
+
     def update(self, path):
-        """Update wallpaper on the desktop"""
+        """Update wallpaper"""
 
-        self.log("Updating background to " + path)
-
-        processes = [
-            # This actually works on Unity as well
-            "gnome-session"
-        ]
-
-        for name in processes:
-            pid = self._get_pid(name)
-            if pid:
-                break
-
-        if not pid:
-            raise Exception("Failed to find a supported desktop environment")
-
-        self.log("Found {} running".format(name))
-
-        if name == "gnome-session":
-            self._update_gnome(path, pid)
-
-    def _update_gnome(self, path, pid):
-        """Updates wallpaper to Gnome and similar (e.g. Unity)"""
-
-        env = self._get_gnome_env(pid)
+        env = self._get_gnome_env(self.pid)
         subprocess.Popen(
             [
                 "gsettings", "set", "org.gnome.desktop.background",
@@ -147,20 +178,31 @@ class WallpaperUpdater(object):
 
         return session
 
-    def _get_pid(self, name):
-        """Find the PID for the given process"""
 
-        p = subprocess.Popen(
-            [
-                "pidof",
-                name
-            ],
-            stdout=subprocess.PIPE
-        )
+class MacOSXUpdater(WallpaperUpdater):
+    """Updates wallpaper on Mac OS X"""
 
-        pid, err = p.communicate()
+    def update(self, path):
+        """Update wallpaper"""
 
-        return pid.strip()
+        with open(os.devnull, "w") as devnull:
+
+            script = """
+echo 'tell application "System Events"
+    tell desktop 1 to set picture to POSIX file "{}"
+    tell desktop 2 to set picture to POSIX file "{}"
+    tell desktop 3 to set picture to POSIX file "{}"
+    tell desktop 4 to set picture to POSIX file "{}"
+    tell desktop 5 to set picture to POSIX file "{}"
+end tell' | /usr/bin/osascript
+""".format(path, path, path, path, path)
+
+            subprocess.Popen(script, stdout=devnull, stderr=subprocess.STDOUT, shell=True)
+
+            subprocess.call([
+                "defaults", "write", "com.apple.Desktop", "background",
+                "{default = {ImageFilePath = \"%s\"; };}" % path
+            ])
 
 
 class WallpaperLoader(object):
@@ -307,7 +349,7 @@ if __name__ == "__main__":
         rssUrl = sys.argv[1]
 
     loader = WallpaperLoader(quiet)
-    updater = WallpaperUpdater(quiet)
+    detector = Detector(quiet)
 
     path = loader.load(rssUrl, tempPath, keepFiles)
-    updater.update(path)
+    detector.get_updater().update(path)

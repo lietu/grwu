@@ -1,13 +1,25 @@
 # Grwu
 
-(Gnome) RSS Wallpaper Updater
+(Not Just) Gnome RSS Wallpaper Updater
 
 
 ## What is this?
 
-Tool to (periodically) update your (Gnome) wallpaper to a random one from an RSS feed, e.g. the NASA image of the day feed.
+Tool to (periodically) update your wallpaper to a random one from a periodically updating RSS feed, e.g. the NASA image of the day feed.
 
-Made primarily for Linux systems and Gnome 3, it has been tested to work without changes on Unity (Ubuntu 12.04), and could work (possibly with changes) with e.g. Gnome 2, Cinnamon, and (definitely with changes) Mac OS X. It also shouldn't be a huge deal to update it to work with XFCE or others.
+Made primarily for Linux systems and Gnome 3, but it now works on a variety of systems. It also shouldn't be a huge deal to update it to work with XFCE or others.
+
+The systems tested to work are:
+
+ * Gnome 3
+ * Unity (Ubuntu 12.04)
+ * Mac OS X
+
+Systems assumed to work are:
+
+ * Gnome 2
+ * Cinnamon (Linux mint)
+
 
 Scheduling is left to the user to do via crontab or similar tools. The tool tries to make sure it works from cron by taking care of e.g. DBUS session.
 
@@ -41,11 +53,9 @@ Where [url] is an optional URL to the RSS feed you want to use.
 
 ## Well what is it that you are not telling us? Are there limitations to this?
 
-Well .. it is fairly limited still, I made it specifically for Gnome 3 on my machine, and NASA image of the day feed. It happens to work on Unity (Ubuntu) as well, probably Cinnamon (Linux Mint) and other Gnome forks.
+Well .. it is fairly limited still, I made it specifically for Gnome 3 on my machine, and NASA image of the day feed. It happens to work on Unity (Ubuntu) as well, probably Cinnamon (Linux Mint) and other Gnome forks. Also there is now support for Mac OS X.
 
- * It currently supports only Gnome and compatible systems. It shouldn't be a big deal to start supporting desktop environments.
-
- * It likely only supports very few RSS feeds. Very few "image of the day" type RSS feeds seem to provide links to the original images, only some thumbnails. Some embedd their images in HTML, some used <media> elements, some <enclosure> elements, etc. .. because it all seemed like a huge mess I only implemented a few things and left the other cases up to you.
+It likely only supports very few RSS feeds. Very few "image of the day" type RSS feeds seem to provide links to the original images, only some thumbnails. Some embedd their images in HTML, some used <media> elements, some <enclosure> elements, etc. .. because it all seemed like a huge mess I only implemented a few things and left the other cases up to you.
 
 
 ## How about licensing?
